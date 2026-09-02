@@ -13,6 +13,7 @@
   --accent: var(--t1);
   --radius: 18px;
   --pad: clamp(16px, 5vw, 28px);
+  color-scheme: dark;
   --font: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
 }
 
