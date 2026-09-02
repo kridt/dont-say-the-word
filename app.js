@@ -536,7 +536,7 @@
   }
 
   $("#btn-play-again").addEventListener("click", function () {
-    if (roomRef) { leaveRoom(true); return; }
+    if (inRoom()) { leaveRoom(true); return; }
     // Samme hold og samme tid — ordpuljen fyldes forfra.
     state.pool = [];
     state.teams[0].score = 0;
@@ -566,7 +566,7 @@
   });
 
   $("#btn-home").addEventListener("click", function () {
-    if (roomRef) { leaveRoom(true); return; }
+    if (inRoom()) { leaveRoom(true); return; }
     show("home");
   });
 
@@ -579,7 +579,7 @@
 
   $("#btn-quit").addEventListener("click", function () {
     if (!confirm("Afslut spillet? Stillingen går tabt.")) return;
-    if (roomRef) { clearSave(); leaveRoom(true); return; }
+    if (inRoom()) { clearSave(); leaveRoom(true); return; }
     clearSave();
     state = newState();
     fillSetupInputs();
@@ -588,20 +588,25 @@
 
 
   /* ---------- Online: alle skriver ord fra hver sin telefon ----------
-     Hele dette lag er valgfrit. Uden en db-runtime (fx på GitHub Pages)
-     bliver `db` aldrig sat, knapperne vises aldrig, og spillet opfører sig
-     præcis som på én delt telefon. */
+     Rumlaget taler kun med `backend`. To implementeringer opfylder den
+     grænseflade: artefaktens db-kapabilitet (på claude.ai) og Supabase
+     (på GitHub Pages og alle andre steder). Findes ingen af dem, dukker
+     knapperne aldrig op, og spillet er præcis som med én delt telefon. */
 
   var CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // uden O/0 og I/1
-  var db = null;
+  var SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
+
+  var backend = null;       // { createRoom, getRoom, updateRoom, watchRoom, addWord, deleteWord, watchWords, pruneWords }
+  var backendKind = null;   // "artifact" | "supabase"
   var onlineMode = false;   // værten har valgt "hver sin telefon"
   var role = null;          // "host" | "player"
   var roomCode = null;
-  var roomRef = null;
   var unsubRoom = null;
   var unsubWords = null;
   var roomWords = [];       // {id, text, by} — kun til optælling og dubletcheck
   var pendingRoomWord = null;
+
+  function inRoom() { return !!roomCode; }
 
   var ME = (function () {
     var id = null;
@@ -613,13 +618,202 @@
     return id;
   })();
 
-  // Kapabiliteten kommer først efter vores første kørsel — siden skal virke uden.
-  if (window.claude && typeof window.claude.use === "function") {
-    window.claude.use("db").then(function (d) {
-      db = d || null;
-      if (db && $("#online-entry")) $("#online-entry").hidden = false;
-    }, function () { db = null; });
+  /* ---------- Backend: artefaktens db ---------- */
+
+  function artifactBackend(db) {
+    function roomDoc(code) { return db.doc("rooms/" + code); }
+    function wordsCol(code) { return db.doc("rooms/" + code).collection("words"); }
+
+    return {
+      kind: "artifact",
+
+      // acquire() gør, at to værter ikke kan tage den samme kode.
+      createRoom: function (code, body) {
+        var ref = roomDoc(code);
+        return ref.acquire({ holder: ME, ttlMs: 5000 }).then(function (lease) {
+          if (!lease.acquired) return false;
+          return ref.get().then(function (snap) {
+            var cur = snap.exists ? (snap.data() || {}) : {};
+            if (cur.host && cur.status !== "done") return false;
+            return ref.set(body).then(function () { return true; });
+          });
+        });
+      },
+      getRoom: function (code) {
+        return roomDoc(code).get().then(function (snap) {
+          return snap.exists ? (snap.data() || null) : null;
+        });
+      },
+      updateRoom: function (code, patch) { return roomDoc(code).update(patch); },
+      watchRoom: function (code, cb) {
+        return roomDoc(code).onSnapshot(function (snap) {
+          if (snap.exists) cb(snap.data() || {});
+        }, function () {});
+      },
+      addWord: function (code, text) {
+        return wordsCol(code).add({ text: text, by: ME, at: Date.now() });
+      },
+      deleteWord: function (code, id) { return wordsCol(code).doc(id).delete(); },
+      watchWords: function (code, cb) {
+        return wordsCol(code).onSnapshot(function (qs) {
+          cb(qs.docs.map(function (d) {
+            var v = d.data() || {};
+            return { id: d.id, text: String(v.text || ""), by: String(v.by || "") };
+          }));
+        }, function () {});
+      },
+      pruneWords: function (code, ids) {
+        var i = 0;
+        (function next() {
+          if (i >= ids.length) return;
+          var chunk = ids.slice(i, i + 5);
+          i += 5;
+          Promise.all(chunk.map(function (id) {
+            return wordsCol(code).doc(id).delete().catch(function () {});
+          })).then(next, function () {});
+        })();
+        return Promise.resolve();
+      }
+    };
   }
+
+  /* ---------- Backend: Supabase ---------- */
+
+  function supabaseBackend(client) {
+    function toBody(row) {
+      if (!row) return null;
+      return {
+        status: row.status,
+        host: row.host,
+        turnSeconds: row.turn_seconds,
+        active: row.active,
+        teams: Array.isArray(row.teams) ? row.teams : []
+      };
+    }
+
+    return {
+      kind: "supabase",
+
+      // Primærnøglen på `code` gør indsættelsen til selve reservationen:
+      // to værter kan ikke få den samme kode.
+      createRoom: function (code, body) {
+        return client.from("rooms").insert({
+          code: code,
+          status: body.status,
+          host: body.host,
+          turn_seconds: body.turnSeconds,
+          active: body.active,
+          teams: body.teams
+        }).then(function (res) {
+          if (res.error) {
+            if (res.error.code === "23505") return false; // koden er taget
+            throw res.error;
+          }
+          return true;
+        });
+      },
+      getRoom: function (code) {
+        return client.from("rooms").select().eq("code", code).limit(1)
+          .then(function (res) {
+            if (res.error) throw res.error;
+            return toBody((res.data || [])[0]);
+          });
+      },
+      updateRoom: function (code, patch) {
+        var row = {};
+        if (patch.status !== undefined) row.status = patch.status;
+        if (patch.active !== undefined) row.active = patch.active;
+        if (patch.teams !== undefined) row.teams = patch.teams;
+        return client.from("rooms").update(row).eq("code", code)
+          .then(function (res) { if (res.error) throw res.error; });
+      },
+      watchRoom: function (code, cb) {
+        var load = function () {
+          client.from("rooms").select().eq("code", code).limit(1).then(function (res) {
+            var body = toBody((res.data || [])[0]);
+            if (body) cb(body);
+          });
+        };
+        var ch = client.channel("room-" + code)
+          .on("postgres_changes",
+              { event: "*", schema: "public", table: "rooms", filter: "code=eq." + code },
+              load)
+          .subscribe();
+        load();
+        return function () { client.removeChannel(ch); };
+      },
+      addWord: function (code, text) {
+        return client.from("words").insert({ room: code, text: text, added_by: ME })
+          .then(function (res) { if (res.error) throw res.error; });
+      },
+      deleteWord: function (code, id) {
+        return client.from("words").delete().eq("id", id)
+          .then(function (res) { if (res.error) throw res.error; });
+      },
+      watchWords: function (code, cb) {
+        // Ordene er få, så vi henter hele listen ved hver ændring — enklere
+        // og altid i takt med serveren.
+        var load = function () {
+          client.from("words").select().eq("room", code).then(function (res) {
+            cb((res.data || []).map(function (r) {
+              return { id: r.id, text: String(r.text || ""), by: String(r.added_by || "") };
+            }));
+          });
+        };
+        var ch = client.channel("words-" + code)
+          .on("postgres_changes",
+              { event: "*", schema: "public", table: "words", filter: "room=eq." + code },
+              load)
+          .subscribe();
+        load();
+        return function () { client.removeChannel(ch); };
+      },
+      pruneWords: function (code) {
+        return client.from("words").delete().eq("room", code).then(function () {});
+      }
+    };
+  }
+
+  /* ---------- Valg af backend ---------- */
+
+  function loadScript(src) {
+    // Allerede til stede (bundlet, eller indsat af siden selv)? Så lad være.
+    if (window.supabase && window.supabase.createClient) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = src;
+      s.async = true;
+      s.onload = resolve;
+      s.onerror = function () { reject(new Error("kunne ikke hente " + src)); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function initBackend() {
+    // Inde i artefakten er db allerede givet; udefra kan den slet ikke nås.
+    var viaArtifact = (window.claude && typeof window.claude.use === "function")
+      ? window.claude.use("db").catch(function () { return null; })
+      : Promise.resolve(null);
+
+    return viaArtifact.then(function (d) {
+      if (d) { backend = artifactBackend(d); backendKind = "artifact"; return; }
+
+      var cfg = window.SUPABASE_CONFIG;
+      if (!cfg || !cfg.url || !cfg.anonKey) return;
+      // Biblioteket hentes kun, hvis der faktisk er et projekt at tale med.
+      return loadScript(SUPABASE_CDN).then(function () {
+        if (!window.supabase || !window.supabase.createClient) return;
+        backend = supabaseBackend(window.supabase.createClient(cfg.url, cfg.anonKey));
+        backendKind = "supabase";
+      });
+    }).catch(function () { backend = null; });
+  }
+
+  initBackend().then(function () {
+    if (backend && $("#online-entry")) $("#online-entry").hidden = false;
+  });
+
+  /* ---------- Rum ---------- */
 
   function randomCode() {
     var s = "";
@@ -641,58 +835,49 @@
     return "Det virkede ikke. Prøv igen.";
   }
 
-  // Tager en ledig kode. acquire() sikrer, at to værter ikke tager den samme.
-  async function createRoom() {
-    for (var attempt = 0; attempt < 6; attempt++) {
+  function newRoomBody() {
+    return {
+      status: "lobby",
+      host: ME,
+      turnSeconds: state.turnSeconds,
+      active: 0,
+      teams: [
+        { name: teamName(0), score: 0 },
+        { name: teamName(1), score: 0 }
+      ]
+    };
+  }
+
+  function createRoom() {
+    var attempt = 0;
+    function tryOne() {
+      if (attempt++ >= 6) return Promise.resolve(null);
       var code = randomCode();
-      var ref = db.doc("rooms/" + code);
-      var lease = await ref.acquire({ holder: ME, ttlMs: 5000 });
-      if (!lease.acquired) continue;
-      var snap = await ref.get();
-      var body = snap.exists ? (snap.data() || {}) : {};
-      if (body.host && body.status !== "done") continue; // koden er i brug
-      await ref.set({
-        status: "lobby",
-        host: ME,
-        turnSeconds: state.turnSeconds,
-        active: 0,
-        teams: [
-          { name: teamName(0), score: 0 },
-          { name: teamName(1), score: 0 }
-        ],
-        at: Date.now()
+      return backend.createRoom(code, newRoomBody()).then(function (ok) {
+        return ok ? code : tryOne();
       });
-      return { code: code, ref: ref };
     }
-    return null;
+    return tryOne();
   }
 
-  async function joinRoom(code) {
-    var ref = db.doc("rooms/" + code);
-    var snap = await ref.get();
-    var body = snap.exists ? (snap.data() || {}) : null;
-    if (!body || !body.host) return { error: "Der er ikke noget rum med den kode." };
-    if (body.status === "done") return { error: "Det spil er slut." };
-    return { ref: ref, body: body };
+  function joinRoom(code) {
+    return backend.getRoom(code).then(function (body) {
+      if (!body || !body.host) return { error: "Der er ikke noget rum med den kode." };
+      if (body.status === "done") return { error: "Det spil er slut." };
+      return { body: body };
+    });
   }
 
-  function enterRoom(code, ref) {
+  function enterRoom(code) {
     roomCode = code;
-    roomRef = ref;
     roomWords = [];
     clearRoomPending();
 
-    unsubRoom = ref.onSnapshot(function (snap) {
-      if (snap.exists) applyRoomState(snap.data() || {});
-    }, function () { /* terminal — lad skærmen stå, som den er */ });
-
-    unsubWords = ref.collection("words").onSnapshot(function (qs) {
-      roomWords = qs.docs.map(function (d) {
-        var v = d.data() || {};
-        return { id: d.id, text: String(v.text || ""), by: String(v.by || "") };
-      });
+    unsubRoom = backend.watchRoom(code, applyRoomState);
+    unsubWords = backend.watchWords(code, function (list) {
+      roomWords = list;
       renderRoom();
-    }, function () {});
+    });
 
     renderRoomChrome();
     renderRoom();
@@ -700,12 +885,12 @@
   }
 
   function leaveRoom(markDone) {
-    if (markDone && roomRef && role === "host") {
-      roomRef.update({ status: "done" }).catch(function () {});
+    if (markDone && roomCode && role === "host") {
+      backend.updateRoom(roomCode, { status: "done" }).catch(function () {});
     }
     if (unsubRoom) { unsubRoom(); unsubRoom = null; }
     if (unsubWords) { unsubWords(); unsubWords = null; }
-    roomRef = null; roomCode = null; role = null;
+    roomCode = null; role = null;
     roomWords = []; onlineMode = false;
     clearRoomPending();
     show("home");
@@ -728,7 +913,7 @@
       state.teams[i].score = Math.max(0, Number(t.score) || 0);
     }
     var done = body.status === "done";
-    var active = body.active === 1 ? 1 : 0;
+    var active = Number(body.active) === 1 ? 1 : 0;
 
     if (done) {
       var a = state.teams[0].score, b = state.teams[1].score;
@@ -780,7 +965,7 @@
       del.textContent = "×";
       del.setAttribute("aria-label", "Fjern " + w.text);
       del.addEventListener("click", function () {
-        roomRef.collection("words").doc(w.id).delete().catch(function () {});
+        backend.deleteWord(roomCode, w.id).catch(function () {});
       });
       li.appendChild(span);
       li.appendChild(del);
@@ -826,27 +1011,12 @@
   }
 
   function addRoomWord(word) {
-    roomRef.collection("words").add({ text: word, by: ME, at: Date.now() })
-      .then(function () {
-        $("#room-input").value = "";
-        $("#room-input").focus();
-        clearRoomPending();
-        setRoomMsg("Tilføjet", "ok");
-      })
-      .catch(function (e) { setRoomMsg(dbMessage(e), "error"); });
-  }
-
-  // Ordene lever videre i værtens spil, så rummets ord ryddes ved start.
-  function pruneWords(ids) {
-    var i = 0;
-    (function next() {
-      if (i >= ids.length || !roomRef) return;
-      var chunk = ids.slice(i, i + 5);
-      i += 5;
-      Promise.all(chunk.map(function (id) {
-        return roomRef.collection("words").doc(id).delete().catch(function () {});
-      })).then(next, function () {});
-    })();
+    backend.addWord(roomCode, word).then(function () {
+      $("#room-input").value = "";
+      $("#room-input").focus();
+      clearRoomPending();
+      setRoomMsg("Tilføjet", "ok");
+    }, function (e) { setRoomMsg(dbMessage(e), "error"); });
   }
 
   function startRoomGame() {
@@ -864,14 +1034,15 @@
     state.started = true;
 
     syncRoom("playing");
-    pruneWords(ids);
+    // Ordene lever videre i værtens spil, så rummets kopi ryddes.
+    backend.pruneWords(roomCode, ids);
     goReady();
   }
 
   // Deltagernes telefoner viser stillingen; én skrivning pr. tur, ikke pr. gæt.
   function syncRoom(status) {
-    if (role !== "host" || !roomRef) return;
-    roomRef.update({
+    if (role !== "host" || !roomCode || !backend) return;
+    backend.updateRoom(roomCode, {
       status: status,
       active: state.active,
       teams: [
@@ -882,14 +1053,14 @@
   }
 
   function hostCreateRoom(btn) {
-    if (!db) return;
+    if (!backend) return;
     btn.disabled = true;
     btn.textContent = "Opretter rum…";
-    createRoom().then(function (res) {
+    createRoom().then(function (code) {
       btn.disabled = false;
       btn.textContent = "Opret rum";
-      if (!res) { alert("Kunne ikke oprette et rum lige nu. Prøv igen."); return; }
-      enterRoom(res.code, res.ref);
+      if (!code) { alert("Kunne ikke oprette et rum lige nu. Prøv igen."); return; }
+      enterRoom(code);
     }, function (e) {
       btn.disabled = false;
       btn.textContent = "Opret rum";
@@ -929,7 +1100,7 @@
 
   $("#btn-do-join").addEventListener("click", function () {
     var code = cleanCode($("#join-code").value);
-    if (code.length !== 4 || !db) return;
+    if (code.length !== 4 || !backend) return;
     var btn = this;
     btn.disabled = true;
     $("#join-msg").textContent = "Finder rummet…";
@@ -943,7 +1114,7 @@
       }
       $("#join-msg").textContent = "";
       state.turnSeconds = Number(res.body.turnSeconds) || 60;
-      enterRoom(code, res.ref);
+      enterRoom(code);
     }, function (e) {
       $("#join-msg").textContent = dbMessage(e);
       $("#join-msg").classList.add("is-error");
@@ -965,7 +1136,7 @@
     e.preventDefault();
     var input = $("#room-input");
     var word = normalize(input.value);
-    if (!word || !roomRef) return;
+    if (!word || !inRoom()) return;
 
     var clash = findRoomClash(word);
 

@@ -37,10 +37,33 @@ ord fra deres egen telefon. Ingen ser hinandens ord – man ser kun sine egne og
 et samlet antal. Når værten starter, spilles selve spillet som før på værtens
 telefon, og de andres skærme viser stillingen live.
 
-Rumtilstanden ligger i artefaktens `db`-kapabilitet. Findes den ikke – fx på
-GitHub Pages, hvor `window.claude` slet ikke eksisterer – dukker knapperne
-aldrig op, og spillet opfører sig præcis som med én delt telefon. Det er
-bevidst: én kodebase, ingen byggeflag.
+Rumlaget taler kun med én lille grænseflade, og to backends opfylder den:
+
+* **Artefaktens `db`** – bruges automatisk inde på claude.ai. Kræver ingen
+  opsætning, men artefakter med `db` kan kun deles internt i ens organisation.
+* **Supabase** – bruges alle andre steder, fx GitHub Pages. Virker for hvem som
+  helst med linket, uden login.
+
+Er ingen af dem til rådighed, dukker knapperne aldrig op, og spillet opfører sig
+præcis som med én delt telefon. Én kodebase, ingen byggeflag.
+
+### Sådan slår du Supabase til
+
+1. Opret et gratis projekt på [supabase.com](https://supabase.com) (intet kort).
+2. Åbn **SQL Editor → New query**, indsæt hele `supabase-setup.sql`, og kør den.
+   Den laver de to tabeller, åbner adgangen for den offentlige nøgle og slår
+   live-opdateringer til.
+3. Gå til **Project Settings → API** og kopier **Project URL** og **anon
+   public**-nøglen ind i `supabase-config.js`.
+4. Commit og push. Knapperne dukker op af sig selv.
+
+`supabase-js` hentes først, når der faktisk står noget i konfigurationen – står
+felterne tomme, hentes biblioteket slet ikke.
+
+Begge værdier hører til i klienten og er offentlige; adgangen styres af
+reglerne i `supabase-setup.sql`. Rækkerne er med vilje åbne for alle med
+nøglen – der ligger kun ord til et selskabsspil i dem. Læg aldrig
+`service_role`-nøglen i filen.
 
 ## Kør det lokalt
 
@@ -77,6 +100,8 @@ Vercel eller Cloudflare Pages – der er ingen afhængigheder at bygge.
 | `index.html` | Alle skærme: forside, opsætning, ordpulje, klar, runde, rundeslut, slutresultat, regler |
 | `styles.css` | Mørkt festspils-look, holdfarver (rød/blå), stor typografi, rød pulserende timer de sidste 10 sekunder |
 | `app.js` | Tilstandsmaskine, timer, pointtælling, ordtrækning, lokal gemning og det valgfrie rum-lag |
+| `supabase-config.js` | Projekt-URL og offentlig nøgle. Tom som standard |
+| `supabase-setup.sql` | Tabeller, adgangsregler og live-opdateringer. Køres én gang |
 
 ## Detaljer under motorhjelmen
 
