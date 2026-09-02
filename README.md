@@ -11,7 +11,8 @@ så det kan lægges direkte på GitHub Pages.
 1. **Opsætning** – navngiv de to hold og vælg rundetid (30/45/60/90/120 sekunder,
    standard er 60).
 2. **Ordpuljen** – send telefonen rundt, og lad alle skrive ord ind. Listen er
-   sløret som standard, så ingen kan skimme puljen. Dubletter afvises.
+   sløret som standard, så ingen kan skimme puljen – til gengæld holder appen
+   selv øje med gengangere (se nedenfor).
 3. **Runden** – beskriveren holder telefonen, ser ordet og forklarer det. Holdet
    råber gæt.
    * **Gættet!** → 1 point, og næste ord kommer med det samme.
@@ -49,6 +50,13 @@ Der er intet byggetrin.
 
 ## Detaljer under motorhjelmen
 
+* **Gengangere fanges, selvom puljen er skjult.** Ord sammenlignes på en
+  foldet nøgle, der ser bort fra store/små bogstaver, mellemrum, tegnsætning
+  og de stavemåder, folk blander sammen (å/aa, æ/ae, ø/o, é/e). Er ordet det
+  samme, afvises det. Ligner det bare noget i puljen – bøjet form som
+  *fyrtårn/fyrtårnet*, eller én tastefejl fra – kommer der en advarsel med et
+  *Tilføj alligevel*-knap, så man aldrig bliver spærret ude af et ord, der
+  faktisk er nyt.
 * **Ord trækkes tilfældigt** fra de resterende ord i puljen.
 * **Timeren regnes ud fra et sluttidspunkt**, ikke fra antal tick, så den ikke
   driver, hvis fanen throttles.

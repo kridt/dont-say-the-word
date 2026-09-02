@@ -134,6 +134,8 @@
       del.setAttribute("aria-label", "Fjern " + word);
       del.addEventListener("click", function () {
         state.pool.splice(i, 1);
+        clearPending();
+        setMsg("", null);
         renderWords();
         save();
       });
@@ -145,15 +147,99 @@
     $("#btn-start-game").disabled = state.pool.length === 0;
   }
 
-  function flash(msg, isError) {
+  // Puljen er skjult, mens man skriver, så appen må selv fange gengangere.
+  // Nøglen folder store/små bogstaver, mellemrum, tegnsætning og de
+  // stavemåder, danskere blander sammen: å/aa, æ/ae, ø/o, é/e.
+  function foldWord(w) {
+    var key = w.toLowerCase()
+      .replace(/æ/g, "ae")
+      .replace(/ø/g, "o")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/aa/g, "a")
+      .replace(/[^a-z0-9]/g, "");
+    return key || w.toLowerCase();
+  }
+
+  // Grov dansk stamme: skærer bestemt form og flertal af, så "fyrtårnet"
+  // og "fyrtårne" lander samme sted som "fyrtårn".
+  var ENDINGS = ["erne", "ene", "ers", "en", "et", "er", "e", "s"];
+  function stemWord(key) {
+    for (var i = 0; i < ENDINGS.length; i++) {
+      var end = ENDINGS[i];
+      if (key.length - end.length >= 3 && key.slice(-end.length) === end) {
+        return key.slice(0, -end.length);
+      }
+    }
+    return key;
+  }
+
+  // Højst én tilføjelse, sletning eller ombytning fra hinanden — fanger tastefejl.
+  function withinOneEdit(a, b) {
+    if (a === b) return true;
+    if (Math.abs(a.length - b.length) > 1) return false;
+    var i = 0, j = 0, diffs = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) { i++; j++; continue; }
+      if (++diffs > 1) return false;
+      if (a.length > b.length) i++;
+      else if (b.length > a.length) j++;
+      else { i++; j++; }
+    }
+    return true;
+  }
+
+  // Returnerer det ord i puljen, det nye ord kolliderer med.
+  // exact: samme ord trods stavemåde — blokeres. Ellers: kun en advarsel.
+  function findClash(word) {
+    var key = foldWord(word);
+    var stem = stemWord(key);
+    var near = null;
+    for (var i = 0; i < state.pool.length; i++) {
+      var other = state.pool[i];
+      var okey = foldWord(other);
+      if (okey === key) return { word: other, exact: true };
+      if (near) continue;
+      var close = stemWord(okey) === stem ||
+        (key.length >= 5 && okey.length >= 5 && withinOneEdit(key, okey));
+      if (close) near = { word: other, exact: false };
+    }
+    return near;
+  }
+
+  var pendingWord = null;
+
+  function setMsg(msg, kind) {
     var el = $("#word-msg");
     el.textContent = msg;
-    el.classList.toggle("is-error", !!isError);
-    clearTimeout(flash.t);
-    flash.t = setTimeout(function () {
-      el.textContent = "";
-      el.classList.remove("is-error");
-    }, 2200);
+    el.classList.toggle("is-error", kind === "error");
+    el.classList.toggle("is-warn", kind === "warn");
+    clearTimeout(setMsg.t);
+    if (kind === "ok") {
+      setMsg.t = setTimeout(function () { el.textContent = ""; }, 2000);
+    }
+  }
+
+  function clearPending() {
+    pendingWord = null;
+    $("#btn-add-anyway").hidden = true;
+    $("#word-form").classList.remove("is-warned");
+  }
+
+  function shakeForm() {
+    var form = $("#word-form");
+    form.classList.remove("is-rejected");
+    void form.offsetWidth; // genstarter animationen
+    form.classList.add("is-rejected");
+  }
+
+  function addWord(word) {
+    state.pool.push(word);
+    $("#word-input").value = "";
+    $("#word-input").focus();
+    clearPending();
+    renderWords();
+    save();
+    setMsg("Tilføjet", "ok");
   }
 
   $("#word-form").addEventListener("submit", function (e) {
@@ -161,20 +247,37 @@
     var input = $("#word-input");
     var word = normalize(input.value);
     if (!word) return;
-    var dupe = state.pool.some(function (w) {
-      return w.toLowerCase() === word.toLowerCase();
-    });
-    if (dupe) {
-      flash("“" + word + "” er allerede i puljen", true);
+
+    var clash = findClash(word);
+
+    if (clash && clash.exact) {
+      clearPending();
+      shakeForm();
+      setMsg("“" + word + "” er allerede i puljen", "error");
       input.select();
       return;
     }
-    state.pool.push(word);
-    input.value = "";
-    input.focus();
-    renderWords();
-    save();
-    flash("Tilføjet");
+
+    if (clash) {
+      pendingWord = word;
+      $("#btn-add-anyway").hidden = false;
+      $("#word-form").classList.add("is-warned");
+      setMsg("Ligner “" + clash.word + "”, som allerede er i puljen.", "warn");
+      input.select();
+      return;
+    }
+
+    addWord(word);
+  });
+
+  $("#btn-add-anyway").addEventListener("click", function () {
+    if (pendingWord) addWord(pendingWord);
+  });
+
+  // Skriver man videre, gælder advarslen ikke længere det, der står i feltet.
+  $("#word-input").addEventListener("input", function () {
+    if (pendingWord) { clearPending(); setMsg("", null); }
+    $("#word-form").classList.remove("is-rejected", "is-warned");
   });
 
   $("#btn-toggle-words").addEventListener("click", function () {

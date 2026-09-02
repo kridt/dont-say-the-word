@@ -70,7 +70,10 @@
         <input type="text" id="word-input" maxlength="40" placeholder="Skriv et ord&hellip;" autocomplete="off" autocapitalize="none" enterkeyhint="done" aria-label="Nyt ord">
         <button class="btn btn-add" type="submit" aria-label="Tilf&oslash;j ord">+</button>
       </form>
-      <p class="form-msg" id="word-msg" role="status" aria-live="polite"></p>
+      <div class="form-feedback">
+        <p class="form-msg" id="word-msg" role="status" aria-live="polite"></p>
+        <button class="btn btn-anyway" id="btn-add-anyway" type="button" hidden>Tilf&oslash;j alligevel</button>
+      </div>
 
       <div class="pool-head">
         <span class="pool-count"><strong id="word-count">0</strong> ord i puljen</span>
