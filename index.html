@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0c0c14">
+<meta name="description" content="Sig ikke ordet – festspillet hvor du skal forklare ordet uden at sige det. Ét ord, 60 sekunder, to hold.">
+<title>Sig ikke ordet</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%A4%90</text></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main id="app">
+
+  <!-- HOME -->
+  <section class="screen" id="screen-home">
+    <div class="stack center">
+      <h1 class="logo">Sig<br><span class="logo-strike">ikke</span><br>ordet</h1>
+      <p class="tagline">Forklar ordet &ndash; uden at sige det.</p>
+      <button class="btn btn-primary" id="btn-new-game">Nyt spil</button>
+      <button class="btn btn-ghost" id="btn-resume" hidden>Forts&aelig;t spil</button>
+      <button class="btn btn-link" id="btn-rules">S&aring;dan spiller I</button>
+    </div>
+  </section>
+
+  <!-- SETUP -->
+  <section class="screen" id="screen-setup">
+    <header class="topbar">
+      <button class="icon-btn" data-goto="home" aria-label="Tilbage">&#8592;</button>
+      <h2>Hold &amp; tid</h2>
+      <span class="spacer"></span>
+    </header>
+    <div class="stack scroll">
+      <label class="field team-field team-1">
+        <span class="field-label">Hold 1</span>
+        <input type="text" id="team1-name" maxlength="18" placeholder="Hold 1" autocomplete="off" enterkeyhint="next">
+      </label>
+      <label class="field team-field team-2">
+        <span class="field-label">Hold 2</span>
+        <input type="text" id="team2-name" maxlength="18" placeholder="Hold 2" autocomplete="off" enterkeyhint="done">
+      </label>
+
+      <div class="field">
+        <span class="field-label">Tid pr. runde</span>
+        <div class="seg" id="time-seg" role="radiogroup" aria-label="Tid pr. runde">
+          <button type="button" class="seg-btn" data-seconds="30" role="radio" aria-checked="false">30s</button>
+          <button type="button" class="seg-btn" data-seconds="45" role="radio" aria-checked="false">45s</button>
+          <button type="button" class="seg-btn is-on" data-seconds="60" role="radio" aria-checked="true">60s</button>
+          <button type="button" class="seg-btn" data-seconds="90" role="radio" aria-checked="false">90s</button>
+          <button type="button" class="seg-btn" data-seconds="120" role="radio" aria-checked="false">120s</button>
+        </div>
+      </div>
+    </div>
+    <footer class="bottombar">
+      <button class="btn btn-primary" id="btn-to-words">Videre til ordene</button>
+    </footer>
+  </section>
+
+  <!-- WORDS -->
+  <section class="screen" id="screen-words">
+    <header class="topbar">
+      <button class="icon-btn" data-goto="setup" aria-label="Tilbage">&#8592;</button>
+      <h2>Ordpuljen</h2>
+      <span class="spacer"></span>
+    </header>
+
+    <div class="stack">
+      <p class="hint">Send telefonen rundt. Alle skriver de ord ind, som de andre skal g&aelig;tte.</p>
+      <form class="word-form" id="word-form" autocomplete="off">
+        <input type="text" id="word-input" maxlength="40" placeholder="Skriv et ord&hellip;" autocomplete="off" autocapitalize="none" enterkeyhint="done" aria-label="Nyt ord">
+        <button class="btn btn-add" type="submit" aria-label="Tilf&oslash;j ord">+</button>
+      </form>
+      <p class="form-msg" id="word-msg" role="status" aria-live="polite"></p>
+
+      <div class="pool-head">
+        <span class="pool-count"><strong id="word-count">0</strong> ord i puljen</span>
+        <button class="btn btn-link" id="btn-toggle-words" aria-pressed="false">Vis ord</button>
+      </div>
+      <ul class="chips is-hidden scroll" id="word-list" aria-label="Ord i puljen"></ul>
+    </div>
+
+    <footer class="bottombar">
+      <button class="btn btn-primary" id="btn-start-game" disabled>Start spillet</button>
+    </footer>
+  </section>
+
+  <!-- READY -->
+  <section class="screen" id="screen-ready">
+    <header class="topbar">
+      <button class="icon-btn" id="btn-quit" aria-label="Afslut spil">&times;</button>
+      <div class="scoreline" id="ready-score"></div>
+      <span class="spacer"></span>
+    </header>
+    <div class="stack center">
+      <p class="eyebrow">Klar?</p>
+      <h2 class="big-team" id="ready-team">Hold 1</h2>
+      <p class="ready-note">Giv telefonen til den, der skal beskrive.<br><span class="muted">Ny beskriver hver runde.</span></p>
+      <p class="pool-left"><span id="ready-pool">0</span> ord tilbage</p>
+      <button class="btn btn-primary btn-huge" id="btn-start-turn">Start runden</button>
+    </div>
+  </section>
+
+  <!-- PLAY -->
+  <section class="screen" id="screen-play">
+    <header class="playbar">
+      <span class="play-team" id="play-team">Hold 1</span>
+      <span class="play-points"><span id="play-points">0</span> point i runden</span>
+    </header>
+    <div class="timer-wrap">
+      <div class="timer" id="timer" aria-live="off">60</div>
+      <div class="timer-track"><div class="timer-fill" id="timer-fill"></div></div>
+    </div>
+    <div class="word-stage">
+      <p class="word" id="play-word">ORD</p>
+    </div>
+    <footer class="play-actions">
+      <button class="btn btn-correct" id="btn-correct">G&aelig;ttet!</button>
+      <button class="btn btn-foul" id="btn-foul">Jeg sagde ordet</button>
+    </footer>
+  </section>
+
+  <!-- TURN END -->
+  <section class="screen" id="screen-turnend">
+    <div class="stack center">
+      <p class="eyebrow" id="turnend-reason">Tiden er udl&oslash;bet</p>
+      <p class="turn-score"><span id="turnend-points">0</span></p>
+      <p class="turn-score-label" id="turnend-label">point til <span id="turnend-team">Hold 1</span></p>
+      <p class="returned" id="turnend-returned" hidden></p>
+      <div class="scoreboard" id="turnend-board"></div>
+      <button class="btn btn-primary btn-huge" id="btn-next-turn">N&aelig;ste hold</button>
+    </div>
+  </section>
+
+  <!-- GAME OVER -->
+  <section class="screen" id="screen-gameover">
+    <div class="stack center">
+      <p class="eyebrow">Alle ord er g&aelig;ttet</p>
+      <h2 class="winner" id="winner-text">Hold 1 vinder!</h2>
+      <div class="scoreboard scoreboard-final" id="final-board"></div>
+      <button class="btn btn-primary" id="btn-play-again">Spil igen</button>
+      <button class="btn btn-link" id="btn-home">Til forsiden</button>
+    </div>
+  </section>
+
+  <!-- RULES -->
+  <section class="screen" id="screen-rules">
+    <header class="topbar">
+      <button class="icon-btn" id="btn-rules-back" aria-label="Tilbage">&#8592;</button>
+      <h2>S&aring;dan spiller I</h2>
+      <span class="spacer"></span>
+    </header>
+    <div class="stack scroll rules">
+      <ol>
+        <li><strong>Fyld puljen.</strong> Send telefonen rundt, og lad alle skrive ord ind. Jo flere ord, jo l&aelig;ngere spil.</li>
+        <li><strong>To hold.</strong> I skiftes til at have en runde. En ny person p&aring; holdet beskriver hver gang.</li>
+        <li><strong>Beskriv &ndash; uden at sige ordet.</strong> Beskriveren holder telefonen og forklarer ordet p&aring; skærmen. Holdet r&aring;ber g&aelig;t.</li>
+        <li><strong>G&aelig;ttet rigtigt?</strong> Tryk <em>G&aelig;ttet!</em> &ndash; 1 point, og n&aelig;ste ord kommer med det samme.</li>
+        <li><strong>Ingen overspringere.</strong> Du kan ikke springe et ord over. Du f&aring;r det ord, du f&aring;r.</li>
+        <li><strong>Siger du ordet?</strong> Modstanderne lytter med. Tryk <em>Jeg sagde ordet</em> &ndash; runden slutter &oslash;jeblikkeligt, og ordet ryger tilbage i puljen. De point, I allerede har f&aring;et i runden, beholder I.</li>
+        <li><strong>L&oslash;ber tiden ud?</strong> Ordet ryger tilbage i puljen og kan komme igen &ndash; ogs&aring; til modstanderne.</li>
+        <li><strong>Spillet slutter,</strong> n&aring;r puljen er tom. Flest point vinder.</li>
+      </ol>
+    </div>
+  </section>
+
+</main>
+<script src="app.js"></script>
+</body>
+</html>
