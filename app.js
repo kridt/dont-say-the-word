@@ -597,7 +597,7 @@
   var SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
 
   var backend = null;       // { createRoom, getRoom, updateRoom, watchRoom, addWord, deleteWord, watchWords, pruneWords }
-  var backendKind = null;   // "artifact" | "supabase"
+  var backendKind = null;   // "artifact" | "firebase" | "supabase"
   var onlineMode = false;   // værten har valgt "hver sin telefon"
   var role = null;          // "host" | "player"
   var roomCode = null;
@@ -673,6 +673,60 @@
           })).then(next, function () {});
         })();
         return Promise.resolve();
+      }
+    };
+  }
+
+  /* ---------- Backend: Firebase (Firestore) ---------- */
+
+  function firebaseBackend(store, fs) {
+    function roomRef(code) { return fs.doc(store, "rooms", code); }
+    function wordsCol(code) { return fs.collection(store, "rooms", code, "words"); }
+    function wordRef(code, id) { return fs.doc(store, "rooms", code, "words", id); }
+
+    return {
+      kind: "firebase",
+
+      // En transaktion gør reservationen atomisk: to værter kan ikke
+      // ende med den samme kode, selv hvis de trykker samtidig.
+      createRoom: function (code, body) {
+        return fs.runTransaction(store, function (tx) {
+          return tx.get(roomRef(code)).then(function (snap) {
+            var cur = snap.exists() ? (snap.data() || {}) : null;
+            if (cur && cur.host && cur.status !== "done") return false;
+            tx.set(roomRef(code), body);
+            return true;
+          });
+        });
+      },
+      getRoom: function (code) {
+        return fs.getDoc(roomRef(code)).then(function (snap) {
+          return snap.exists() ? (snap.data() || null) : null;
+        });
+      },
+      updateRoom: function (code, patch) { return fs.updateDoc(roomRef(code), patch); },
+      watchRoom: function (code, cb) {
+        return fs.onSnapshot(roomRef(code), function (snap) {
+          if (snap.exists()) cb(snap.data() || {});
+        }, function () {});
+      },
+      addWord: function (code, text) {
+        return fs.addDoc(wordsCol(code), { text: text, by: ME, at: Date.now() });
+      },
+      deleteWord: function (code, id) { return fs.deleteDoc(wordRef(code, id)); },
+      watchWords: function (code, cb) {
+        return fs.onSnapshot(wordsCol(code), function (qs) {
+          cb(qs.docs.map(function (d) {
+            var v = d.data() || {};
+            return { id: d.id, text: String(v.text || ""), by: String(v.by || "") };
+          }));
+        }, function () {});
+      },
+      pruneWords: function (code, ids) {
+        if (!ids.length) return Promise.resolve();
+        var batch = fs.writeBatch(store);
+        ids.forEach(function (id) { batch.delete(wordRef(code, id)); });
+        return batch.commit().catch(function () {});
       }
     };
   }
@@ -789,6 +843,38 @@
     });
   }
 
+  function firebaseBase() {
+    return "https://www.gstatic.com/firebasejs/" +
+      (window.FIREBASE_SDK_VERSION || "10.12.2") + "/";
+  }
+
+  // Bibliotekerne hentes kun, hvis der faktisk er et projekt at tale med.
+  function initFirebase() {
+    var cfg = window.FIREBASE_CONFIG;
+    if (!cfg || !cfg.apiKey || !cfg.projectId) return Promise.resolve(false);
+    var base = firebaseBase();
+    return Promise.all([
+      import(base + "firebase-app.js"),
+      import(base + "firebase-firestore.js")
+    ]).then(function (mods) {
+      var fs = mods[1];
+      backend = firebaseBackend(fs.getFirestore(mods[0].initializeApp(cfg)), fs);
+      backendKind = "firebase";
+      return true;
+    }, function () { return false; });
+  }
+
+  function initSupabase() {
+    var cfg = window.SUPABASE_CONFIG;
+    if (!cfg || !cfg.url || !cfg.anonKey) return Promise.resolve(false);
+    return loadScript(SUPABASE_CDN).then(function () {
+      if (!window.supabase || !window.supabase.createClient) return false;
+      backend = supabaseBackend(window.supabase.createClient(cfg.url, cfg.anonKey));
+      backendKind = "supabase";
+      return true;
+    }, function () { return false; });
+  }
+
   function initBackend() {
     // Inde i artefakten er db allerede givet; udefra kan den slet ikke nås.
     var viaArtifact = (window.claude && typeof window.claude.use === "function")
@@ -797,14 +883,8 @@
 
     return viaArtifact.then(function (d) {
       if (d) { backend = artifactBackend(d); backendKind = "artifact"; return; }
-
-      var cfg = window.SUPABASE_CONFIG;
-      if (!cfg || !cfg.url || !cfg.anonKey) return;
-      // Biblioteket hentes kun, hvis der faktisk er et projekt at tale med.
-      return loadScript(SUPABASE_CDN).then(function () {
-        if (!window.supabase || !window.supabase.createClient) return;
-        backend = supabaseBackend(window.supabase.createClient(cfg.url, cfg.anonKey));
-        backendKind = "supabase";
+      return initFirebase().then(function (ok) {
+        if (!ok) return initSupabase();
       });
     }).catch(function () { backend = null; });
   }

@@ -41,57 +41,38 @@ Rumlaget taler kun med én lille grænseflade, og to backends opfylder den:
 
 * **Artefaktens `db`** – bruges automatisk inde på claude.ai. Kræver ingen
   opsætning, men artefakter med `db` kan kun deles internt i ens organisation.
-* **Supabase** – bruges alle andre steder, fx GitHub Pages. Virker for hvem som
-  helst med linket, uden login.
+* **Firebase (Firestore)** – bruges alle andre steder, fx GitHub Pages. Virker
+  for hvem som helst med linket, uden login.
+* **Supabase** – alternativ til Firebase, hvis man hellere vil have SQL.
 
 Er ingen af dem til rådighed, dukker knapperne aldrig op, og spillet opfører sig
 præcis som med én delt telefon. Én kodebase, ingen byggeflag.
 
-### Sådan slår du Supabase til
+### Sådan slår du Firebase til
 
-1. Opret et gratis projekt på [supabase.com](https://supabase.com) (intet kort).
-2. Åbn **SQL Editor → New query**, indsæt hele `supabase-setup.sql`, og kør den.
-   Den laver de to tabeller, åbner adgangen for den offentlige nøgle og slår
-   live-opdateringer til.
-3. Gå til **Project Settings → API** og kopier **Project URL** og **anon
-   public**-nøglen ind i `supabase-config.js`.
-4. Commit og push. Knapperne dukker op af sig selv.
+Projektet er allerede konfigureret i `backend-config.js`. Der mangler to ting
+i Firebase Console:
 
-`supabase-js` hentes først, når der faktisk står noget i konfigurationen – står
-felterne tomme, hentes biblioteket slet ikke.
+1. **Opret databasen** – Build → Firestore Database → *Create database* → vælg
+   en placering (fx `eur3`). Start i produktionstilstand; reglerne kommer i
+   næste trin.
+2. **Indsæt reglerne** – Firestore Database → fanen **Rules** → erstat alt med
+   indholdet af `firestore.rules` → **Publish**.
 
-Begge værdier hører til i klienten og er offentlige; adgangen styres af
-reglerne i `supabase-setup.sql`. Rækkerne er med vilje åbne for alle med
-nøglen – der ligger kun ord til et selskabsspil i dem. Læg aldrig
-`service_role`-nøglen i filen.
+Så virker det. Spillerne skal ikke logge ind, og web-API-nøglen i
+`backend-config.js` er ment til at ligge offentligt – den identificerer
+projektet, den giver ikke adgang. Det er reglerne, der bestemmer, hvad man må.
+Reglerne holder dokumenterne i den form, spillet forventer, og sætter loft over
+ordlængden, så ingen kan proppe vilkårlige data ind.
 
-## Kør det lokalt
+Firebase-bibliotekerne hentes først, når `FIREBASE_CONFIG` er udfyldt. Går
+hentningen galt – fx en SDK-version, der ikke findes – falder spillet stille
+tilbage til pass-the-phone. Versionen står i `FIREBASE_SDK_VERSION`.
 
-Åbn `index.html` direkte i en browser, eller server mappen:
+### Supabase i stedet
 
-```bash
-python3 -m http.server 8000
-# -> http://localhost:8000
-```
-
-## Hosting (GitHub Pages)
-
-Siden ligger i roden af `main` og er klar til GitHub Pages. Der er intet
-byggetrin – Pages skal bare pege på branchen.
-
-1. **Gør repoet offentligt** – Settings → General → nederst *Change repository
-   visibility* → *Make public*. (Pages virker ikke på private repos på gratis-
-   planen; med GitHub Pro kan man springe dette over.)
-2. **Slå Pages til** – Settings → Pages → Source: *Deploy from a branch* →
-   Branch: `main` → mappe: `/ (root)` → *Save*.
-3. Efter ca. et minut er spillet live på
-   **https://kridt.github.io/dont-say-the-word/**
-
-`.nojekyll` ligger i roden, så Pages serverer filerne, som de er, uden at køre
-dem gennem Jekyll først.
-
-Vil man hellere hoste et andet sted, kan mappen lægges direkte ind hos Netlify,
-Vercel eller Cloudflare Pages – der er ingen afhængigheder at bygge.
+Tøm `FIREBASE_CONFIG`, udfyld `SUPABASE_CONFIG` i samme fil, og kør
+`supabase-setup.sql` i projektets SQL Editor. Resten er ens.
 
 ## Filer
 
@@ -100,8 +81,9 @@ Vercel eller Cloudflare Pages – der er ingen afhængigheder at bygge.
 | `index.html` | Alle skærme: forside, opsætning, ordpulje, klar, runde, rundeslut, slutresultat, regler |
 | `styles.css` | Mørkt festspils-look, holdfarver (rød/blå), stor typografi, rød pulserende timer de sidste 10 sekunder |
 | `app.js` | Tilstandsmaskine, timer, pointtælling, ordtrækning, lokal gemning og det valgfrie rum-lag |
-| `supabase-config.js` | Projekt-URL og offentlig nøgle. Tom som standard |
-| `supabase-setup.sql` | Tabeller, adgangsregler og live-opdateringer. Køres én gang |
+| `backend-config.js` | Firebase- eller Supabase-projekt. Tom = pass-the-phone |
+| `firestore.rules` | Adgangsregler til Firestore. Indsættes én gang i konsollen |
+| `supabase-setup.sql` | Skema til Supabase, hvis man vælger den vej |
 
 ## Detaljer under motorhjelmen
 
