@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  var STORE_KEY = "sig-ikke-ordet:v1";
+  var STORE_KEY = "sig-ikke-ordet:v2";
   var URGENT_AT = 10; // sekunder tilbage hvor timeren bliver rød
 
   var $ = function (sel) { return document.querySelector(sel); };
@@ -19,6 +19,7 @@
       turnSeconds: 60,
       pool: [],        // ord der stadig kan komme i spil
       current: null,   // ordet i spil lige nu
+      turnWords: [],   // ord gættet i denne runde — føres tilbage, hvis runden afbrydes
       active: 0,       // hvilket hold der har turen
       turnPoints: 0,
       endReason: null, // "time" | "foul" | "cleared"
@@ -53,6 +54,58 @@
     try { localStorage.removeItem(STORE_KEY); } catch (e) {}
   }
 
+  // Gemte data er brugerinput fra en tidligere session — læs dem defensivt.
+  function hydrate(s) {
+    var base = newState();
+    for (var i = 0; i < 2; i++) {
+      var t = (s.teams && s.teams[i]) || {};
+      base.teams[i].name = typeof t.name === "string" && t.name ? t.name : "Hold " + (i + 1);
+      base.teams[i].score = Math.max(0, Number(t.score) || 0);
+    }
+    base.turnSeconds = Number(s.turnSeconds) || 60;
+    base.pool = Array.isArray(s.pool) ? s.pool.filter(function (w) { return typeof w === "string"; }) : [];
+    base.turnWords = Array.isArray(s.turnWords) ? s.turnWords.filter(function (w) { return typeof w === "string"; }) : [];
+    base.current = typeof s.current === "string" ? s.current : null;
+    base.active = s.active === 1 ? 1 : 0;
+    base.turnPoints = Math.max(0, Number(s.turnPoints) || 0);
+    base.endReason = s.endReason || null;
+    base.started = !!s.started;
+    base.screen = s.screen || "home";
+    return base;
+  }
+
+  var RESUMABLE = ["setup", "words", "ready", "play", "turnend"];
+
+  function isResumable(s) {
+    if (!s || RESUMABLE.indexOf(s.screen) === -1) return false;
+    return !!s.started || (Array.isArray(s.pool) && s.pool.length > 0);
+  }
+
+  // Sætter spillet tilbage præcis der, hvor det slap.
+  function resumeFrom(s) {
+    state = hydrate(s);
+    fillSetupInputs();
+
+    if (state.screen === "play") {
+      // Runden nåede aldrig at blive færdig. Den spilles helt forfra:
+      // ordene fra runden ryger tilbage i puljen, og pointene rulles tilbage,
+      // så ingen får point for en runde, de ikke spillede færdig.
+      if (state.current) { state.pool.push(state.current); state.current = null; }
+      state.pool = state.pool.concat(state.turnWords);
+      state.teams[state.active].score =
+        Math.max(0, state.teams[state.active].score - state.turnPoints);
+      state.turnWords = [];
+      state.turnPoints = 0;
+      goReady();
+      return;
+    }
+    if (state.screen === "ready") { goReady(); return; }
+    if (state.screen === "turnend") { renderTurnEnd(); return; }
+    if (state.screen === "words") { renderWords(); show("words"); save(); return; }
+    show("setup");
+    save();
+  }
+
   /* ---------- Skærme ---------- */
 
   function show(name) {
@@ -61,6 +114,7 @@
     for (var i = 0; i < screens.length; i++) {
       screens[i].classList.toggle("is-active", screens[i].id === "screen-" + name);
     }
+    if (name === "home") $("#btn-resume").hidden = !isResumable(load());
     window.scrollTo(0, 0);
   }
 
@@ -96,6 +150,7 @@
     btn.addEventListener("click", function () {
       state.turnSeconds = Number(btn.dataset.seconds);
       paintTimeSeg();
+      save();
     });
   });
 
@@ -103,6 +158,7 @@
   [["#team1-name", 0, "Hold 1"], ["#team2-name", 1, "Hold 2"]].forEach(function (pair) {
     $(pair[0]).addEventListener("input", function () {
       state.teams[pair[1]].name = this.value.trim() || pair[2];
+      save();
     });
   });
 
@@ -111,6 +167,7 @@
     state.teams[1].name = $("#team2-name").value.trim() || "Hold 2";
     renderWords();
     show("words");
+    save();
     $("#word-input").focus();
   });
 
@@ -295,6 +352,7 @@
     state.teams[1].score = 0;
     state.active = 0;
     state.current = null;
+    state.turnWords = [];
     state.turnPoints = 0;
     state.started = true;
     goReady();
@@ -343,6 +401,7 @@
 
   function startTurn() {
     state.turnPoints = 0;
+    state.turnWords = [];
     state.endReason = null;
     setAccent(state.active);
     $("#play-team").textContent = teamName(state.active);
@@ -350,6 +409,7 @@
     drawWord();
     paintTimer(state.turnSeconds);
     show("play");
+    save();
     requestWakeLock();
 
     deadline = Date.now() + state.turnSeconds * 1000;
@@ -371,8 +431,10 @@
     if (state.screen !== "play") return;
     state.turnPoints += 1;
     state.teams[state.active].score += 1;
+    state.turnWords.push(state.current);
     $("#play-points").textContent = String(state.turnPoints);
     state.current = null;
+    save();
     if (!state.pool.length) {
       endTurn("cleared");
       return;
@@ -396,6 +458,7 @@
       state.pool.push(state.current);
       state.current = null;
     }
+    state.turnWords = [];
     state.endReason = reason;
 
     if (reason === "cleared" || state.pool.length === 0) {
@@ -475,10 +538,12 @@
     state.teams[1].score = 0;
     state.active = 0;
     state.current = null;
+    state.turnWords = [];
     state.turnPoints = 0;
     state.started = false;
     renderWords();
     show("words");
+    save();
   });
 
   /* ---------- Navigation ---------- */
@@ -505,32 +570,40 @@
     if (!confirm("Afslut spillet? Stillingen går tabt.")) return;
     clearSave();
     state = newState();
+    fillSetupInputs();
     show("home");
-    $("#btn-resume").hidden = true;
   });
 
   /* ---------- Genoptag ---------- */
 
-  var saved = load();
-  if (saved && saved.started && saved.pool.length) {
-    $("#btn-resume").hidden = false;
-    $("#btn-resume").addEventListener("click", function () {
-      state = saved;
-      // En afbrudt runde starter forfra — ordet i spil ryger tilbage i puljen.
-      if (state.current) { state.pool.push(state.current); state.current = null; }
-      state.turnPoints = 0;
-      goReady();
-    });
-  }
+  $("#btn-resume").addEventListener("click", function () {
+    var s = load();
+    if (isResumable(s)) resumeFrom(s);
+  });
 
-  // Skifter man væk fra fanen midt i en runde, stopper vi ikke tiden —
-  // men wake lock skal hentes igen, når man kommer tilbage.
+  // Telefoner smider baggrundsfaner væk uden varsel, så vi gemmer også,
+  // når siden lægges væk — ikke kun ved skift af skærm.
+  function saveOnLeave() {
+    if (state.screen !== "home" && state.screen !== "gameover") save();
+  }
+  window.addEventListener("pagehide", saveOnLeave);
+
   document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "visible" && state.screen === "play") {
-      requestWakeLock();
+    if (document.visibilityState === "hidden") {
+      saveOnLeave();
+      return;
     }
+    // Skifter man væk fra fanen midt i en runde, stopper vi ikke tiden —
+    // men wake lock skal hentes igen, når man kommer tilbage.
+    if (state.screen === "play") requestWakeLock();
   });
 
   fillSetupInputs();
-  show("home");
+
+  var savedGame = load();
+  if (isResumable(savedGame)) {
+    resumeFrom(savedGame);   // fortsætter af sig selv, hvor spillet slap
+  } else {
+    show("home");
+  }
 })();

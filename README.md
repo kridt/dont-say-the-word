@@ -60,8 +60,15 @@ Der er intet byggetrin.
 * **Ord trækkes tilfældigt** fra de resterende ord i puljen.
 * **Timeren regnes ud fra et sluttidspunkt**, ikke fra antal tick, så den ikke
   driver, hvis fanen throttles.
-* **Spillet gemmes lokalt** (`localStorage`) efter hver runde. Genindlæser man
-  ved et uheld siden, kan man trykke *Fortsæt spil*; en afbrudt runde starter
-  forfra, og ordet i spil ryger tilbage i puljen.
+* **Spillet fortsætter, hvor det slap.** Alt gemmes lokalt (`localStorage`) –
+  holdnavne, rundetid, ordpuljen, stillingen og hvilken skærm man var på – og
+  der gemmes også, når siden lægges væk (`pagehide` / `visibilitychange`), fordi
+  telefoner smider baggrundsfaner væk uden varsel. Åbner man siden igen, er man
+  tilbage samme sted uden at trykke på noget: midt i ordpuljen, på klar-skærmen
+  eller på rundeopsamlingen.
+  En **afbrudt runde spilles helt forfra**: ordene fra runden ryger tilbage i
+  puljen, og pointene rulles tilbage, så ingen får point for en runde, de ikke
+  spillede færdig. Spillet ryddes, når det er slut, når man trykker ✕, eller når
+  man starter et nyt spil.
 * **Skærmen holdes vågen** under en runde via Wake Lock API, hvor browseren
   understøtter det.
