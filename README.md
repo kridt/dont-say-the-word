@@ -26,33 +26,53 @@ så det kan lægges direkte på GitHub Pages.
 
 Der er **ingen overspringere**: man får det ord, man får.
 
-## Kør det lokalt
+## To måder at fylde puljen på
 
-Åbn `index.html` direkte i en browser, eller server mappen:
+**Én delt telefon** (virker overalt): alle skriver ord ind på den samme telefon.
+Listen er sløret undervejs, så ingen kan skimme puljen.
 
-```bash
-python3 -m http.server 8000
-# -> http://localhost:8000
-```
+**Hver sin telefon** (kun som Artifact på claude.ai): værten opretter et rum og
+læser en firetegnskode op. De andre åbner samme link, taster koden og skriver
+ord fra deres egen telefon. Ingen ser hinandens ord – man ser kun sine egne og
+et samlet antal. Når værten starter, spilles selve spillet som før på værtens
+telefon, og de andres skærme viser stillingen live.
 
-## Hosting (GitHub Pages)
+Rumlaget taler kun med én lille grænseflade, og to backends opfylder den:
 
-Siden ligger i roden af `main` og er klar til GitHub Pages. Der er intet
-byggetrin – Pages skal bare pege på branchen.
+* **Artefaktens `db`** – bruges automatisk inde på claude.ai. Kræver ingen
+  opsætning, men artefakter med `db` kan kun deles internt i ens organisation.
+* **Firebase (Firestore)** – bruges alle andre steder, fx GitHub Pages. Virker
+  for hvem som helst med linket, uden login.
+* **Supabase** – alternativ til Firebase, hvis man hellere vil have SQL.
 
-1. **Gør repoet offentligt** – Settings → General → nederst *Change repository
-   visibility* → *Make public*. (Pages virker ikke på private repos på gratis-
-   planen; med GitHub Pro kan man springe dette over.)
-2. **Slå Pages til** – Settings → Pages → Source: *Deploy from a branch* →
-   Branch: `main` → mappe: `/ (root)` → *Save*.
-3. Efter ca. et minut er spillet live på
-   **https://kridt.github.io/dont-say-the-word/**
+Er ingen af dem til rådighed, dukker knapperne aldrig op, og spillet opfører sig
+præcis som med én delt telefon. Én kodebase, ingen byggeflag.
 
-`.nojekyll` ligger i roden, så Pages serverer filerne, som de er, uden at køre
-dem gennem Jekyll først.
+### Sådan slår du Firebase til
 
-Vil man hellere hoste et andet sted, kan mappen lægges direkte ind hos Netlify,
-Vercel eller Cloudflare Pages – der er ingen afhængigheder at bygge.
+Projektet er allerede konfigureret i `backend-config.js`. Der mangler to ting
+i Firebase Console:
+
+1. **Opret databasen** – Build → Firestore Database → *Create database* → vælg
+   en placering (fx `eur3`). Start i produktionstilstand; reglerne kommer i
+   næste trin.
+2. **Indsæt reglerne** – Firestore Database → fanen **Rules** → erstat alt med
+   indholdet af `firestore.rules` → **Publish**.
+
+Så virker det. Spillerne skal ikke logge ind, og web-API-nøglen i
+`backend-config.js` er ment til at ligge offentligt – den identificerer
+projektet, den giver ikke adgang. Det er reglerne, der bestemmer, hvad man må.
+Reglerne holder dokumenterne i den form, spillet forventer, og sætter loft over
+ordlængden, så ingen kan proppe vilkårlige data ind.
+
+Firebase-bibliotekerne hentes først, når `FIREBASE_CONFIG` er udfyldt. Går
+hentningen galt – fx en SDK-version, der ikke findes – falder spillet stille
+tilbage til pass-the-phone. Versionen står i `FIREBASE_SDK_VERSION`.
+
+### Supabase i stedet
+
+Tøm `FIREBASE_CONFIG`, udfyld `SUPABASE_CONFIG` i samme fil, og kør
+`supabase-setup.sql` i projektets SQL Editor. Resten er ens.
 
 ## Filer
 
@@ -60,7 +80,10 @@ Vercel eller Cloudflare Pages – der er ingen afhængigheder at bygge.
 | --- | --- |
 | `index.html` | Alle skærme: forside, opsætning, ordpulje, klar, runde, rundeslut, slutresultat, regler |
 | `styles.css` | Mørkt festspils-look, holdfarver (rød/blå), stor typografi, rød pulserende timer de sidste 10 sekunder |
-| `app.js` | Tilstandsmaskine, timer, pointtælling, ordtrækning og lokal gemning |
+| `app.js` | Tilstandsmaskine, timer, pointtælling, ordtrækning, lokal gemning og det valgfrie rum-lag |
+| `backend-config.js` | Firebase- eller Supabase-projekt. Tom = pass-the-phone |
+| `firestore.rules` | Adgangsregler til Firestore. Indsættes én gang i konsollen |
+| `supabase-setup.sql` | Skema til Supabase, hvis man vælger den vej |
 
 ## Detaljer under motorhjelmen
 

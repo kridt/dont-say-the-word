@@ -19,6 +19,11 @@
       <p class="tagline">Forklar ordet &ndash; uden at sige det.</p>
       <button class="btn btn-primary" id="btn-new-game">Nyt spil</button>
       <button class="btn btn-ghost" id="btn-resume" hidden>Forts&aelig;t spil</button>
+      <div class="online-entry" id="online-entry" hidden>
+        <p class="or">eller</p>
+        <button class="btn btn-ghost" id="btn-host-room">Alle p&aring; hver sin telefon</button>
+        <button class="btn btn-link" id="btn-join-room">Deltag med en kode</button>
+      </div>
       <button class="btn btn-link" id="btn-rules">S&aring;dan spiller I</button>
     </div>
   </section>
@@ -145,6 +150,70 @@
     </div>
   </section>
 
+  <!-- JOIN -->
+  <section class="screen" id="screen-join">
+    <header class="topbar">
+      <button class="icon-btn" data-goto="home" aria-label="Tilbage">&#8592;</button>
+      <h2>Deltag i spillet</h2>
+      <span class="spacer"></span>
+    </header>
+    <div class="stack center">
+      <p class="hint">Skriv koden, som v&aelig;rten l&aelig;ser op.</p>
+      <form id="join-form" autocomplete="off">
+        <input type="text" id="join-code" class="code-input" maxlength="4" inputmode="latin"
+               autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false"
+               placeholder="KODE" aria-label="Rumkode" enterkeyhint="go">
+      </form>
+      <p class="form-msg" id="join-msg" role="status" aria-live="polite"></p>
+      <button class="btn btn-primary" id="btn-do-join" disabled>Deltag</button>
+    </div>
+  </section>
+
+  <!-- ROOM: alle skriver ord fra hver sin telefon -->
+  <section class="screen" id="screen-room">
+    <header class="topbar">
+      <button class="icon-btn" id="btn-leave-room" aria-label="Forlad rummet">&times;</button>
+      <div class="room-code" id="room-code" aria-label="Rumkode">&mdash;</div>
+      <span class="spacer"></span>
+    </header>
+
+    <div class="stack">
+      <p class="hint" id="room-hint">Alle skriver ord ind herfra. Ingen kan se hinandens ord.</p>
+
+      <form class="word-form" id="room-form" autocomplete="off">
+        <input type="text" id="room-input" maxlength="40" placeholder="Skriv et ord&hellip;"
+               autocomplete="off" autocapitalize="none" enterkeyhint="done" aria-label="Nyt ord">
+        <button class="btn btn-add" type="submit" aria-label="Tilf&oslash;j ord">+</button>
+      </form>
+      <div class="form-feedback">
+        <p class="form-msg" id="room-msg" role="status" aria-live="polite"></p>
+        <button class="btn btn-anyway" id="btn-room-anyway" type="button" hidden>Tilf&oslash;j alligevel</button>
+      </div>
+
+      <div class="pool-head">
+        <span class="pool-count"><strong id="room-total">0</strong> ord fra <span id="room-people">0</span></span>
+        <span class="pool-count muted" id="room-mine">dine: 0</span>
+      </div>
+      <ul class="chips scroll" id="room-list" aria-label="Dine ord"></ul>
+    </div>
+
+    <footer class="bottombar">
+      <button class="btn btn-primary" id="btn-room-start" disabled hidden>Start spillet</button>
+      <p class="waiting" id="room-waiting" hidden>Venter p&aring;, at v&aelig;rten starter&hellip;</p>
+    </footer>
+  </section>
+
+  <!-- WATCH: spillet k&oslash;rer p&aring; v&aelig;rtens telefon -->
+  <section class="screen" id="screen-watch">
+    <div class="stack center">
+      <p class="eyebrow" id="watch-status">Spillet er i gang</p>
+      <h2 class="big-team" id="watch-team">&mdash;</h2>
+      <p class="hint" id="watch-note">Spillet k&oslash;rer p&aring; v&aelig;rtens telefon.</p>
+      <div class="scoreboard" id="watch-board"></div>
+      <button class="btn btn-link" id="btn-watch-leave">Forlad spillet</button>
+    </div>
+  </section>
+
   <!-- RULES -->
   <section class="screen" id="screen-rules">
     <header class="topbar">
@@ -167,6 +236,7 @@
   </section>
 
 </main>
+<script src="backend-config.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
