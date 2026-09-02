@@ -26,6 +26,22 @@ så det kan lægges direkte på GitHub Pages.
 
 Der er **ingen overspringere**: man får det ord, man får.
 
+## To måder at fylde puljen på
+
+**Én delt telefon** (virker overalt): alle skriver ord ind på den samme telefon.
+Listen er sløret undervejs, så ingen kan skimme puljen.
+
+**Hver sin telefon** (kun som Artifact på claude.ai): værten opretter et rum og
+læser en firetegnskode op. De andre åbner samme link, taster koden og skriver
+ord fra deres egen telefon. Ingen ser hinandens ord – man ser kun sine egne og
+et samlet antal. Når værten starter, spilles selve spillet som før på værtens
+telefon, og de andres skærme viser stillingen live.
+
+Rumtilstanden ligger i artefaktens `db`-kapabilitet. Findes den ikke – fx på
+GitHub Pages, hvor `window.claude` slet ikke eksisterer – dukker knapperne
+aldrig op, og spillet opfører sig præcis som med én delt telefon. Det er
+bevidst: én kodebase, ingen byggeflag.
+
 ## Kør det lokalt
 
 Åbn `index.html` direkte i en browser, eller server mappen:
@@ -60,7 +76,7 @@ Vercel eller Cloudflare Pages – der er ingen afhængigheder at bygge.
 | --- | --- |
 | `index.html` | Alle skærme: forside, opsætning, ordpulje, klar, runde, rundeslut, slutresultat, regler |
 | `styles.css` | Mørkt festspils-look, holdfarver (rød/blå), stor typografi, rød pulserende timer de sidste 10 sekunder |
-| `app.js` | Tilstandsmaskine, timer, pointtælling, ordtrækning og lokal gemning |
+| `app.js` | Tilstandsmaskine, timer, pointtælling, ordtrækning, lokal gemning og det valgfrie rum-lag |
 
 ## Detaljer under motorhjelmen
 

@@ -242,6 +242,46 @@ input::placeholder { color: #55556b; }
 }
 .chip button:active { background: var(--t1); }
 
+/* ---------- Online: rum, kode, venteskærm ---------- */
+
+.online-entry { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+.or {
+  text-transform: uppercase; letter-spacing: .18em;
+  font-size: .72rem; font-weight: 700; color: var(--muted);
+  margin: 2px 0;
+}
+
+.code-input {
+  text-align: center;
+  font-size: clamp(2.4rem, 14vw, 3.4rem);
+  font-weight: 900;
+  letter-spacing: .22em;
+  text-indent: .22em;      /* modvægt til sporet efter sidste tegn */
+  text-transform: uppercase;
+  padding: 18px 12px;
+  max-width: 320px;
+}
+#join-form { display: flex; justify-content: center; width: 100%; }
+
+.room-code {
+  flex: 1;
+  text-align: center;
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: .26em;
+  text-indent: .26em;
+  color: var(--accent);
+}
+
+.waiting {
+  text-align: center;
+  color: var(--muted);
+  font-size: .95rem;
+  padding: 18px 0;
+}
+
+.chip.is-own { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+
 /* ---------- Ready ---------- */
 
 .scoreline { flex: 1; display: flex; justify-content: center; gap: 14px; font-weight: 800; font-size: 1rem; }
