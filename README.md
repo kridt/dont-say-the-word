@@ -35,10 +35,24 @@ python3 -m http.server 8000
 # -> http://localhost:8000
 ```
 
-## Læg det på GitHub Pages
+## Hosting (GitHub Pages)
 
-Settings -> Pages -> Source: *Deploy from a branch* -> vælg branch og `/ (root)`.
-Der er intet byggetrin.
+Siden ligger i roden af `main` og er klar til GitHub Pages. Der er intet
+byggetrin – Pages skal bare pege på branchen.
+
+1. **Gør repoet offentligt** – Settings → General → nederst *Change repository
+   visibility* → *Make public*. (Pages virker ikke på private repos på gratis-
+   planen; med GitHub Pro kan man springe dette over.)
+2. **Slå Pages til** – Settings → Pages → Source: *Deploy from a branch* →
+   Branch: `main` → mappe: `/ (root)` → *Save*.
+3. Efter ca. et minut er spillet live på
+   **https://kridt.github.io/dont-say-the-word/**
+
+`.nojekyll` ligger i roden, så Pages serverer filerne, som de er, uden at køre
+dem gennem Jekyll først.
+
+Vil man hellere hoste et andet sted, kan mappen lægges direkte ind hos Netlify,
+Vercel eller Cloudflare Pages – der er ingen afhængigheder at bygge.
 
 ## Filer
 
